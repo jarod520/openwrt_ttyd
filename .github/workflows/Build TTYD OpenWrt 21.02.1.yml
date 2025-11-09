@@ -1,0 +1,306 @@
+name: Build TTYD with HTTPS (TLS) for RK3568 using OpenWrt 21.02.1
+
+on:
+  workflow_dispatch:
+    inputs:
+      ssh:
+        description: 'SSH connection to Actions'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: write
+  packages: read
+
+env:
+  TZ: Asia/Shanghai
+  # 使用 OpenWrt 21.02.1 SDK for Rockchip ARMv8
+  SDK_URL: https://downloads.openwrt.org/releases/21.02.1/targets/rockchip/armv8/openwrt-sdk-21.02.1-rockchip-armv8_gcc-8.4.0_musl.Linux-x86_64.tar.xz
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /usr/local/lib/android
+          sudo apt update -y
+          sudo apt full-upgrade -y
+          sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+          bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext \
+          genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev \
+          libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev \
+          libreadline-dev libssl-dev libtool llvm lrzsz libnsl-dev ninja-build p7zip p7zip-full patch pkgconf \
+          python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion \
+          swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+
+      - name: Download and extract OpenWrt 21.02.1 SDK
+        run: |
+          wget -q ${{ env.SDK_URL }}
+          file_name=$(echo ${{ env.SDK_URL }} | awk -F/ '{print $NF}')
+          mkdir sdk
+          if [[ $file_name == *.tar.xz ]]; then
+            tar -xJf $file_name -C ./sdk --strip-components=1
+          elif [[ $file_name == *.tar.zst ]]; then
+            tar --zstd -x -f $file_name -C ./sdk --strip-components=1
+          else
+            echo "Unsupported file format: $file_name"
+            exit 1
+          fi
+          echo "SDK_DIR=$PWD/sdk" >> $GITHUB_ENV
+
+      - name: Copy custom packages to SDK
+        run: |
+          # 检查包目录是否存在
+          if [ -d "libwebsockets-full" ]; then
+            cp -r libwebsockets-full $SDK_DIR/package/
+            echo "✅ libwebsockets-full package copied"
+          else
+            echo "❌ libwebsockets-full directory not found"
+            exit 1
+          fi
+          
+          if [ -d "ttyd" ]; then
+            cp -r ttyd $SDK_DIR/package/
+            echo "✅ ttyd package copied"
+          else
+            echo "❌ ttyd directory not found"
+            exit 1
+          fi
+
+          # 新增：复制 luci-app-ttyd 包
+          if [ -d "luci-app-ttyd" ]; then
+            cp -r luci-app-ttyd $SDK_DIR/package/
+            echo "✅ luci-app-ttyd package copied"
+          else
+            echo "❌ luci-app-ttyd directory not found"
+            exit 1
+          fi
+
+      - name: SSH connection to Actions (debug)
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event.inputs.ssh == 'true' }}
+
+      - name: Setup feeds and configuration for OpenWrt 21.02.1
+        run: |
+          cd $SDK_DIR
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          
+          # 配置为 RK3568 目标 - OpenWrt 21.02.1
+          echo "CONFIG_TARGET_rockchip=y" > .config
+          echo "CONFIG_TARGET_rockchip_armv8=y" >> .config
+          echo "CONFIG_TARGET_rockchip_armv8_DEVICE_friendlyarm_nanopi-r5s=y" >> .config
+          echo "CONFIG_PACKAGE_libwebsockets-full=m" >> .config
+          echo "CONFIG_PACKAGE_ttyd=m" >> .config
+          echo "CONFIG_PACKAGE_luci-app-ttyd=m" >> .config
+          
+          make defconfig
+
+      - name: Download package sources
+        run: |
+          cd $SDK_DIR
+          make package/libwebsockets-full/download V=s
+          make package/ttyd/download V=s
+          make package/luci-app-ttyd/download V=s
+          find dl -size -1024c -exec ls -l {} \; || true
+
+      - name: Compile libwebsockets-full
+        id: compile_libwebsockets
+        run: |
+          cd $SDK_DIR
+          echo "🚀 Starting libwebsockets-full compilation..."
+          make package/libwebsockets-full/clean V=s
+          if make package/libwebsockets-full/compile -j$(nproc) V=s; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "✅ libwebsockets-full compiled successfully"
+          else
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "❌ libwebsockets-full compilation failed"
+            exit 1
+          fi
+
+      - name: Compile ttyd
+        id: compile_ttyd
+        run: |
+          cd $SDK_DIR
+          echo "🚀 Starting ttyd compilation..."
+          make package/ttyd/clean V=s
+          if make package/ttyd/compile -j$(nproc) V=s; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "✅ ttyd compiled successfully"
+          else
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "❌ ttyd compilation failed"
+            exit 1
+          fi
+
+      - name: Compile luci-app-ttyd
+        id: compile_luci_app_ttyd
+        run: |
+          cd $SDK_DIR
+          echo "🚀 Starting luci-app-ttyd compilation..."
+          make package/luci-app-ttyd/clean V=s
+          if make package/luci-app-ttyd/compile -j$(nproc) V=s; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "✅ luci-app-ttyd compiled successfully"
+          else
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "❌ luci-app-ttyd compilation failed"
+            exit 1
+          fi
+          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+
+      - name: Collect build artifacts
+        if: steps.compile_libwebsockets.outputs.status == 'success' && steps.compile_ttyd.outputs.status == 'success' && steps.compile_luci_app_ttyd.outputs.status == 'success'
+        run: |
+          cd $SDK_DIR
+          mkdir -p upload
+          
+          # 查找所有相关的 IPK 文件
+          echo "=== Searching for IPK files ==="
+          find bin -name "*ttyd*.ipk" -type f | while read file; do
+            echo "Found ttyd IPK: $file"
+            cp "$file" upload/
+          done
+          
+          find bin -name "*libwebsockets*.ipk" -type f | while read file; do
+            echo "Found libwebsockets IPK: $file"
+            cp "$file" upload/
+          done
+
+          # 新增：查找 luci-app-ttyd IPK 文件
+          find bin -name "*luci-app-ttyd*.ipk" -type f | while read file; do
+            echo "Found luci-app-ttyd IPK: $file"
+            cp "$file" upload/
+          done
+          
+          # 查找二进制文件
+          echo "=== Searching for binary files ==="
+          find build_dir -name "ttyd" -type f | while read file; do
+            if file "$file" | grep -q "ELF"; then
+              echo "Found ELF binary: $file"
+              cp "$file" upload/ttyd
+              chmod +x upload/ttyd
+              break
+            fi
+          done
+          
+          echo "📁 Upload directory contents:"
+          ls -la upload/
+
+      - name: Generate release info
+        id: release_info
+        if: steps.compile_libwebsockets.outputs.status == 'success' && steps.compile_ttyd.outputs.status == 'success' && steps.compile_luci_app_ttyd.outputs.status == 'success'
+        run: |
+          cd $SDK_DIR
+          cat > upload/RELEASE_INFO.md << 'EOF'
+          ## 🌐 TTYD (HTTPS/TLS) Build for RK3568 - OpenWrt 21.02.1
+          
+          ### Build Information
+          - **Build Date**: $(date)
+          - **OpenWrt Version**: 21.02.1
+          - **Target**: Rockchip ARMv8 (RK3568)
+          - **Repository**: ${{ github.repository }}
+          - **Commit**: ${{ github.sha }}
+          
+          ### Packages Included
+          - **ttyd** - Share your terminal over the web with TLS/SSL support
+          - **libwebsockets-full** - Full WebSocket library with OpenSSL support
+          - **luci-app-ttyd** - LuCI web interface for ttyd
+          
+          ### Installation Instructions
+          1. Upload the IPK files to your RK3568 OpenWrt 21.02.1 device
+          2. Install packages (按顺序安装):
+          ```bash
+          opkg install libwebsockets-full_*.ipk
+          opkg install ttyd_*.ipk
+          opkg install luci-app-ttyd_*.ipk
+          ```
+          
+          3. 启用服务:
+          ```bash
+          /etc/init.d/ttyd enable
+          /etc/init.d/ttyd start
+          ```
+          
+          4. 通过 LuCI 界面配置 SSL:
+          - 访问 LuCI 管理界面
+          - 进入 "Services" -> "Terminal"
+          - 启用 SSL/TLS 并配置证书路径
+          
+          5. 或者手动生成 SSL 证书:
+          ```bash
+          # Create SSL directory
+          mkdir -p /etc/ssl
+          
+          # Generate self-signed certificate
+          openssl req -x509 -newkey rsa:2048 \
+            -keyout /etc/ssl/ttyd.key \
+            -out /etc/ssl/ttyd.crt \
+            -days 365 -nodes \
+            -subj '/CN=localhost'
+            
+          # Start ttyd with SSL
+          ttyd --ssl --ssl-cert /etc/ssl/ttyd.crt --ssl-key /etc/ssl/ttyd.key bash
+          ```
+          
+          6. 通过浏览器访问: `https://your-device-ip:7681`
+          
+          ### File List
+          EOF
+          
+          echo "\`\`\`" >> upload/RELEASE_INFO.md
+          ls -la upload/ >> upload/RELEASE_INFO.md
+          echo "\`\`\`" >> upload/RELEASE_INFO.md
+          
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: Generate unique tag with date and random number
+        id: tag_generator
+        if: steps.compile_libwebsockets.outputs.status == 'success' && steps.compile_ttyd.outputs.status == 'success' && steps.compile_luci_app_ttyd.outputs.status == 'success' && steps.release_info.outputs.status == 'success'
+        run: |
+          # 生成随机四位数
+          RANDOM_NUM=$(shuf -i 1000-9999 -n 1)
+          # 构建标签：OpenWrt-ttyd-年月日-随机四位数
+          BUILD_TAG="OpenWrt-ttyd-$(date +%Y%m%d)-${RANDOM_NUM}"
+          echo "Generated tag: $BUILD_TAG"
+          echo "tag_name=$BUILD_TAG" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        if: steps.tag_generator.outputs.tag_name
+        run: |
+          echo "Creating release with tag: ${{ steps.tag_generator.outputs.tag_name }}"
+          gh release create "${{ steps.tag_generator.outputs.tag_name }}" \
+            --title "OpenWrt 21.02.1 TTYD HTTPS Build for RK3568 $(date +'%Y-%m-%d')" \
+            --notes-file $SDK_DIR/upload/RELEASE_INFO.md \
+            $SDK_DIR/upload/*.ipk \
+            $SDK_DIR/upload/ttyd \
+            --prerelease
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: ttyd-https-packages-21.02.1
+          path: |
+            $SDK_DIR/upload/*.ipk
+            $SDK_DIR/upload/ttyd
+          if-no-files-found: warn
+
+      - name: Debug build directory structure
+        if: always()
+        run: |
+          cd $SDK_DIR
+          echo "🔍 Debugging build directory structure..."
+          echo "=== All IPK files ==="
+          find bin -name "*.ipk" -type f | head -20
+          echo "=== Build directories ==="
+          find build_dir -name "*ttyd*" -type d | head -10
+          find build_dir -name "*libwebsockets*" -type d | head -10
+          find build_dir -name "*luci-app-ttyd*" -type d | head -10
