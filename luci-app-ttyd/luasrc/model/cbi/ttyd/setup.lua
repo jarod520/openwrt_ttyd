@@ -264,5 +264,10 @@ o.default = luci.sys.hostname()
 o.placeholder = "Openwrt.lan"
 
 ---------------------------
+-- 保存后自动重启 ttyd 服务
+m.on_after_commit = function(self)
+    luci.sys.call("logger '[LuCI] ttyd configuration changed, restarting service...'")
+    luci.sys.call("/etc/init.d/ttyd restart >/dev/null 2>&1 &")
+end
 
 return m
