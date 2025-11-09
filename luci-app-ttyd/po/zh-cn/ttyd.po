@@ -1,0 +1,186 @@
+msgid "Advanced Settings"
+msgstr "高级设置"
+
+msgid "Basic Authentication"
+msgstr "基本身份验证"
+
+msgid "Basic Settings"
+msgstr "基础设置"
+
+msgid "Can't load non-SSL terminal into page loaded over HTTPS"
+msgstr "无法将非SSL终端通过HTTPS的页面加载！"
+
+msgid "Check origin"
+msgstr "检查来源"
+
+msgid "Common name (/CN)"
+msgstr "通用（/CN）"
+
+msgid "Country name (/C)"
+msgstr "国家 (/C)"
+
+msgid "Credentials for basic authentication"
+msgstr "用于基本身份验证的凭据"
+
+msgid "Do not allow clients to write to the TTY"
+msgstr "不允许客户端写入 TTYD"
+
+msgid "Do not allow websocket connection from different origin"
+msgstr "不允许不同来源的 websocket 连接"
+
+msgid "Enable SSL"
+msgstr "启用 SSL"
+
+msgid "HTTPS certificate (PEM&nbsp;format)"
+msgstr "HTTPS 证书 (PEM格式)"
+
+msgid "HTTPS private key (PEM&nbsp;format)"
+msgstr "HTTPS 密钥 (PEM格式)"
+
+msgid ""
+"If terminal is not displayed and you use self-signed SSL certificate may you "
+"need to open terminal in a separate browser window using the appropriate "
+"button above and approve the certificate manually. After approving the "
+"certificate you need to reload this page."
+msgstr "如果未显示终端，并且您使用的是自签名SSL证书，则您可能需要点击上方的相应按钮在单独"
+"的浏览器窗口中打开终端，然后手动批准该证书。批准证书后，您需要重新加载此页面！"
+
+msgid "Interface"
+msgstr "接口"
+
+msgid "Length of the private key in bits"
+msgstr "密钥长度（位）"
+
+msgid "Listen only on the given interface or, if unspecified, on all"
+msgstr "仅监听指定的接口，未指定则监听全部"
+
+msgid "Locality name (/L)"
+msgstr "地区（/ L）"
+
+msgid "Maximum clients"
+msgstr "最大客户端数量"
+
+msgid "Maximum clients to support (default: 0, no limit)"
+msgstr "最大支持的客户端数量 (默认: 0, 无限制)"
+
+msgid "Message types for logging"
+msgstr "记录的日志类型"
+
+msgid "Must have certificate when using SSL"
+msgstr "使用SSL时必须具有证书"
+
+msgid "Must have key when using SSL"
+msgstr "使用SSL时必须具有密钥"
+
+msgid "Number of days a generated certificate is valid"
+msgstr "适用于证书的有效天数"
+
+msgid "Open terminal in a separate window"
+msgstr "在单独的窗口中打开终端"
+
+msgid "Organization name (/O)"
+msgstr "机构（/ O）"
+
+msgid "Organizational unit name (/OU)"
+msgstr "部门(/OU)"
+
+msgid "Password"
+msgstr "密码"
+
+msgid "Password for basic authentication"
+msgstr "用于基本身份验证的密码"
+
+msgid "Port"
+msgstr "端口"
+
+msgid "Port to listen (default: 7681)"
+msgstr "要监听的端口 (默认: 7681)"
+
+msgid "Read only"
+msgstr "只读"
+
+msgid "Remove certificate and key"
+msgstr "删除证书和密钥"
+
+msgid "SSL Settings"
+msgstr "SSL设置"
+
+msgid "SSL certificate file path"
+msgstr "SSL证书文件路径"
+
+msgid "SSL key file path"
+msgstr "SSL密钥文件路径"
+
+msgid ""
+"Select websockets library message types for logging (default: LLL_ERR and "
+"LLL_WARN)"
+msgstr "设置日志级别 (默认:LLL_ERR 和 LLL_WARN)
+
+msgid "Self-signed SSL certificate parameters"
+msgstr "自签名SSL证书参数"
+
+msgid "Setup"
+msgstr "配置"
+
+msgid "Start TTYd server"
+msgstr "开启 TTYD 服务"
+
+msgid "State or province name (/ST)"
+msgstr "省或州 (/ST)"
+
+msgid "TTYd server is not running"
+msgstr "TTYD服务没有运行"
+
+msgid "TTYd server settings"
+msgstr "TTYD服务器设置"
+
+msgid ""
+"TTYd will generate a new self-signed certificate using the configuration "
+"shown below"
+msgstr "TTYD将使用以下所示的配置生成一个新的自签名证书"
+
+msgid "Terminal"
+msgstr "TTYD终端"
+
+msgid "Terminal1"
+msgstr "终端"
+
+msgid "Terminal2"
+msgstr "终端运行"
+
+msgid "Terminal settings"
+msgstr "终端配置"
+
+msgid "The city where your company is legally located"
+msgstr "公司所在的城市"
+
+msgid "The fully-qualified domain name"
+msgstr "完全合格的域名"
+
+msgid "The name of your department within the organization"
+msgstr "所在部门的名称"
+
+msgid "The state/province where your company is legally located"
+msgstr "公司所在的省/州"
+
+msgid "The two-letter country code where your company is legally located"
+msgstr "公司所在国家/地区代码的两个字母缩写"
+
+msgid "Use basic authentication"
+msgstr "使用基本身份验证"
+
+msgid "Username"
+msgstr "用户名"
+
+msgid "Username for basic authentication"
+msgstr "用于基本身份验证的用户名"
+
+msgid ""
+"You can enable SSL in terminal settings page or use HTTP connection instead "
+"of HTTPS. Also you can open terminal in a separate window using the "
+"appropriate button below."
+msgstr "您可以在“终端设定”页中启用SSL或改用HTTP连接"
+"您也可以使用下面按钮“在单独的窗口中打开终端”"
+
+msgid "Your company's legally registered name"
+msgstr "公司的注册名称"

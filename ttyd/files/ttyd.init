@@ -1,0 +1,233 @@
+#!/bin/sh /etc/rc.common
+
+START=30
+USE_PROCD=1
+
+OPENSSL_BIN="/usr/bin/openssl"
+
+TTYD_COMMAND="/bin/login"
+TTYD_INIT="/etc/init.d/ttyd"
+TTYD_PID="/var/run/ttyd.pid"
+TTYD_BIN="/usr/bin/ttyd"
+
+get_network_device() {
+    local interface="$1"
+    local device=""
+    local network_name=""
+    
+    # 提取网络名称（去掉可能的@前缀）
+    if [ "${interface:0:1}" = "@" ]; then
+        network_name="${interface:1}"
+    else
+        network_name="$interface"
+    fi
+    
+    logger -t ttyd "Looking up network device for: '$interface' (network: '$network_name')"
+    
+    # 首先尝试使用 network.sh 获取设备名称
+    if [ -f "/lib/functions/network.sh" ]; then
+        . /lib/functions/network.sh
+        if network_get_device device "$network_name" 2>/dev/null; then
+            logger -t ttyd "Found network device via network.sh: '$device'"
+            echo "$device"
+            return 0
+        else
+            logger -t ttyd "network_get_device failed for: '$network_name'"
+        fi
+    else
+        logger -t ttyd "network.sh not found"
+    fi
+    
+    # 如果 network.sh 不可用或失败，尝试常见映射
+    case "$network_name" in
+        lan) 
+            device="br-lan"
+            logger -t ttyd "Using default mapping for lan: '$device'"
+            echo "$device"
+            ;;
+        wan) 
+            device="eth0"  # 或者尝试检测真实的WAN设备
+            logger -t ttyd "Using default mapping for wan: '$device'"
+            echo "$device"
+            ;;
+        *)
+            # 对于其他接口，直接使用名称
+            logger -t ttyd "Using interface name as device: '$network_name'"
+            echo "$network_name"
+            ;;
+    esac
+}
+
+generate_keys() {
+    local crt="$1"
+    local key="$2"
+    local days bits country state location commonname
+
+    config_load 'ttyd'
+    config_get days          "ssl" "days" 730
+    config_get bits          "ssl" "bits" 2048
+    config_get country       "ssl" "country" "CN"
+    config_get state         "ssl" "state"
+    config_get locality      "ssl" "locality"
+    config_get commonname    "ssl" "commonname"
+    config_get organization  "ssl" "organization" "OpenWrt"
+    config_get organizational_unit "ssl" "organizational_unit"
+
+    mkdir -p "$(dirname "$crt")"
+    mkdir -p "$(dirname "$key")"
+
+    local SUBJ=""
+    local GENKEY_CMD=""
+
+    SUBJ="/C=${country}/O=${organization}"
+    [ -n "$commonname" ] && SUBJ="${SUBJ}/CN=${commonname}"
+    [ -n "$state" ] && SUBJ="${SUBJ}/ST=${state}"
+    [ -n "$locality" ] && SUBJ="${SUBJ}/L=${locality}"
+    [ -n "$organizational_unit" ] && SUBJ="${SUBJ}/OU=${organizational_unit}"
+
+    if [ -x "$OPENSSL_BIN" ]; then
+        $OPENSSL_BIN req -new -newkey rsa:${bits} -days ${days} -nodes -x509 \
+            -keyout "$key" -out "$crt" -subj "$SUBJ" >/dev/null 2>&1
+        return $?
+    else
+        logger -t ttyd "OpenSSL not found, cannot generate certificates"
+        return 1
+    fi
+}
+
+validate_ssl_certificates() {
+    local cert="$1"
+    local key="$2"
+    
+    if [ ! -f "$cert" ] || [ ! -f "$key" ]; then
+        return 1
+    fi
+    
+    # 简单检查证书和密钥文件是否非空
+    [ -s "$cert" ] && [ -s "$key" ] && return 0
+    return 1
+}
+
+start_service() {
+    local ttyd_port
+    local ttyd_interface
+    local ttyd_debug
+    local ttyd_max_clients
+    local ttyd_readonly
+    local ttyd_check_origin
+    local ttyd_credential
+    local ttyd_username
+    local ttyd_password
+    local ttyd_ssl
+    local ttyd_ssl_cert
+    local ttyd_ssl_key
+
+    local cfg="server"
+
+    config_load 'ttyd'
+    config_get ttyd_port         "$cfg" "port" "7681"
+    config_get ttyd_max_clients  "$cfg" "max_clients" "0"
+    config_get ttyd_interface    "$cfg" "interface"
+    config_get ttyd_ssl          "$cfg" "ssl" "0"
+    config_get ttyd_readonly     "$cfg" "readonly" "0"
+    config_get ttyd_check_origin "$cfg" "check_origin" "0"
+    config_get ttyd_credential   "$cfg" "credential" "0"
+    config_get ttyd_ssl_key      "$cfg" "ssl_key" "/etc/ttyd/ttyd.key"
+    config_get ttyd_ssl_cert     "$cfg" "ssl_cert" "/etc/ttyd/ttyd.crt"
+    config_get ttyd_debug        "$cfg" "debug" "1"
+    config_get ttyd_username     "$cfg" "username"
+    config_get ttyd_password     "$cfg" "password"
+
+    logger -t ttyd "Starting ttyd service with interface: '$ttyd_interface'"
+
+    # 构建命令行参数
+    local cmd_args=""
+    
+    # 端口
+    [ -n "$ttyd_port" ] && [ "$ttyd_port" != "0" ] && cmd_args="$cmd_args -p $ttyd_port"
+    
+    # 接口处理 - 关键修复
+    if [ -n "$ttyd_interface" ]; then
+        local bind_interface=$(get_network_device "$ttyd_interface")
+        if [ -n "$bind_interface" ]; then
+            logger -t ttyd "Successfully converted interface '$ttyd_interface' to device '$bind_interface'"
+            cmd_args="$cmd_args -i $bind_interface"
+        else
+            logger -t ttyd "Failed to convert interface '$ttyd_interface', binding to all interfaces"
+        fi
+    else
+        logger -t ttyd "No interface specified, binding to all interfaces"
+    fi
+
+    # 调试级别
+    local debug_level=0
+    if [ -n "$ttyd_debug" ]; then
+        for level in $ttyd_debug; do
+            debug_level=$((debug_level + level))
+        done
+    fi
+    [ "$debug_level" -gt 0 ] && cmd_args="$cmd_args -d $debug_level"
+
+    # 最大客户端数
+    [ "$ttyd_max_clients" -gt 0 ] && cmd_args="$cmd_args -m $ttyd_max_clients"
+
+    # SSL 配置
+    if [ "$ttyd_ssl" = "1" ]; then
+        if validate_ssl_certificates "$ttyd_ssl_cert" "$ttyd_ssl_key"; then
+            cmd_args="$cmd_args -S -C $ttyd_ssl_cert -K $ttyd_ssl_key"
+            logger -t ttyd "Using SSL certificates: $ttyd_ssl_cert, $ttyd_ssl_key"
+        else
+            logger -t ttyd "SSL certificates not found or invalid, generating new ones"
+            if generate_keys "$ttyd_ssl_cert" "$ttyd_ssl_key"; then
+                cmd_args="$cmd_args -S -C $ttyd_ssl_cert -K $ttyd_ssl_key"
+                logger -t ttyd "SSL certificates generated successfully"
+            else
+                logger -t ttyd "Failed to generate SSL certificates, starting without SSL"
+            fi
+        fi
+    fi
+
+    # 其他选项
+    [ "$ttyd_readonly" = "1" ] && cmd_args="$cmd_args -R"
+    [ "$ttyd_check_origin" = "1" ] && cmd_args="$cmd_args -O"
+
+    # 基本认证
+    if [ "$ttyd_credential" = "1" ] && [ -n "$ttyd_username" ] && [ -n "$ttyd_password" ]; then
+        cmd_args="$cmd_args -c ${ttyd_username}:${ttyd_password}"
+    fi
+
+    # 最终命令
+    cmd_args="$cmd_args $TTYD_COMMAND"
+
+    logger -t ttyd "Final command: $TTYD_BIN $cmd_args"
+
+    procd_open_instance "ttyd"
+    procd_set_param command "$TTYD_BIN"
+    
+    # 使用 eval 来正确处理带空格的参数
+    eval "set -- $cmd_args"
+    for arg in "$@"; do
+        procd_append_param command "$arg"
+    done
+
+    procd_set_param stderr 1
+    procd_set_param stdout 1
+    procd_set_param pidfile "$TTYD_PID"
+    procd_set_param respawn
+    procd_set_param respawn_retry 3600
+    procd_close_instance
+}
+
+stop_service() {
+    killall ttyd 2>/dev/null
+    rm -f "$TTYD_PID"
+}
+
+reload_service() {
+    stop
+    start
+}
+
+service_triggers() {
+    procd_add_reload_trigger "ttyd"
+}
