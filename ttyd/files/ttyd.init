@@ -209,6 +209,7 @@ start_service() {
     procd_set_param stderr 1
     procd_set_param stdout 1
     procd_set_param pidfile "$TTYD_PID"
+    procd_set_param terminal 1
     procd_set_param respawn
     procd_set_param respawn_retry 3600
     procd_close_instance
